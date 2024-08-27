@@ -8,9 +8,9 @@ When adding or editing a diagram, make sure it is stored in the section with the
 
 📁 chapter0_fundamentals  
   ├── 📁 sec0_prereqs  
-  │   └── new-diagram-1.png
-  │   └── new-diagram-2.png
-  │   └── ...
+  │  └── new-diagram-1.png  
+  │  └── new-diagram-2.png  
+  │  └── ...  
   ├── 📁 sec1_raytracing  
   ├── 📁 sec2_cnns  
   ├── 📁 sec3_opti  
