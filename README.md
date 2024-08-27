@@ -2,9 +2,7 @@ This GitHub repo hosts the diagrams and images used for the ARENA 3.0 materials.
 
 ## Directory structure
 
-The diagrams are divided into 4 main chapters: `chapterO_fundamentals`, `chapter1_transformer_interp`, `chapter2_rl`, and `chapter3_evals`. Within each chapter, we define section directories that match the structure of [ARENA_3.0](https://github.com/callummcdougall/ARENA_3.0) GitHub repo (inside the `instructions/pages` directories of each chapter). 
-
-When adding or editing a diagram, make sure it is stored in the section with the same `sec` name as the [ARENA_3.0](https://github.com/callummcdougall/ARENA_3.0) GitHub repo (if this doesn't exist, make a new directory with the matching name.)
+The diagrams are divided into 4 main chapters: `chapterO_fundamentals`, `chapter1_transformer_interp`, `chapter2_rl`, and `chapter3_evals`. Within each chapter, we define section directories that match the structure of [ARENA_3.0](https://github.com/callummcdougall/ARENA_3.0) GitHub repo (inside the `instructions/pages` directories of each chapter). When adding or editing a diagram, store it in the correspodning the section (if this doesn't exist, make a new directory with the matching name.)
 
 📁 chapter0_fundamentals  
   ├── 📁 sec0_prereqs  
