@@ -8,7 +8,7 @@ When adding or editing a diagram, make sure it is stored in the section with the
 
 📁 chapter0_fundamentals  
   ├── 📁 sec0_prereqs  
-  │  └── new-diagram-1.png  
+  │  ├── new-diagram-1.png  
   │  └── new-diagram-2.png  
   │  └── ...  
   ├── 📁 sec1_raytracing  
@@ -16,7 +16,7 @@ When adding or editing a diagram, make sure it is stored in the section with the
   ├── 📁 sec3_opti  
   ├── 📁 sec4_backprop  
   ├── 📁 sec5_gans_and_vaes   
-📁 chapter1_transformer_interp
-  ├── 📁 sec1_transformer
-  ├── 📁 sec2_intro_to_mi
-  ├── ...
+📁 chapter1_transformer_interp  
+  ├── 📁 sec1_transformer  
+  ├── 📁 sec2_intro_to_mi  
+  ├── ...  
