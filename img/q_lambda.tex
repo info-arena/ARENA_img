@@ -1,0 +1,41 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\title{scratch}
+\author{davidquarel }
+\date{May 2025}
+
+\begin{document}
+
+
+\begin{algorithm}[H]
+\caption{Q($\lambda$) with eligibility traces}
+\begin{algorithmic}[1]
+\State Initialize $Q(s,a)$ arbitrarily and $e(s,a) = 0$, for all $s,a$
+\Repeat \Comment{for each episode}
+    \State Initialize $s, a$
+    \Repeat \Comment{for each step of episode}
+        \State Take action $a$, observe $r, s'$
+        \State $a' \gets \pi(s')$ 
+        \State $a^* \gets \text{argmax}_a Q(s',a)$
+        \State $\delta \gets r + \gamma Q(s', a^*) - Q(s, a)$
+        \State $e(s,a) \gets e(s,a) + 1$
+        \ForAll{$s,a$}
+            \State $Q(s,a) \gets Q(s,a) + \alpha \delta e(s,a)$
+            \If{$a' = a^*$}
+                \State $e(s,a) \gets \gamma \lambda e(s,a)$
+            \Else
+                \State $e(s,a) \gets 0$
+            \EndIf
+        \EndFor
+        \State $s \gets s'; \quad a \gets a'$
+    \Until{$s$ is terminal}
+\Until{convergence}
+\end{algorithmic}
+\end{algorithm}
+
+\end{document}
