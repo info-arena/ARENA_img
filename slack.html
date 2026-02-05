@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join ARENA Slack</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        .slack-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: #4A154B;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+        }
+
+        p {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            color: #555;
+        }
+
+        .redirect-message {
+            font-weight: 600;
+            color: #667eea;
+            margin: 25px 0;
+        }
+
+        .button {
+            display: inline-block;
+            background: #4A154B;
+            color: white;
+            text-decoration: none;
+            padding: 14px 32px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 20px 0;
+            transition: background 0.3s ease;
+        }
+
+        .button:hover {
+            background: #611f69;
+        }
+
+        .error-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .error-title {
+            font-weight: 600;
+            color: #e74c3c;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .email {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .email:hover {
+            text-decoration: underline;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+    <script>
+        // UPDATE THIS URL WITH THE CURRENT SLACK INVITE LINK
+        const SLACK_INVITE_URL = 'https://join.slack.com/t/arena-education/shared_invite/YOUR_INVITE_CODE_HERE';
+
+        // Attempt automatic redirect after 2 seconds
+        setTimeout(() => {
+            window.location.href = SLACK_INVITE_URL;
+        }, 2000);
+
+        function joinNow() {
+            window.location.href = SLACK_INVITE_URL;
+        }
+    </script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="slack-icon">💬</div>
+        <h1>Join the ARENA Slack</h1>
+        <p>You're being redirected to join the ARENA community on Slack...</p>
+        <div class="spinner"></div>
+        <p class="redirect-message">If you're not redirected automatically, click the button below:</p>
+        <a href="javascript:joinNow()" class="button">Join ARENA Slack</a>
+
+        <div class="error-section">
+            <p class="error-title">⚠️ Link not working?</p>
+            <p>If the invite link has expired or doesn't work, please email:</p>
+            <a href="mailto:info@arena.education?subject=Slack%20Invite%20Link%20Expired"
+                class="email">info@arena.education</a>
+            <p style="margin-top: 10px; font-size: 14px; color: #888;">Let us know that the Slack link needs to be
+                updated.</p>
+        </div>
+    </div>
+</body>
+
+</html>
