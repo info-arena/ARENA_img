@@ -1,0 +1,237 @@
+<div class="cg_943728-container" style="position:relative;display:inline-flex;flex-direction:column;align-items:center;gap:8px;background:#1a1a2e;padding:112px 200px;border-radius:12px;font-family:'Segoe UI',system-ui,sans-serif;">
+  
+  <canvas id="cg_943728_canvas" style="cursor:default;border-radius:8px;"></canvas>
+  <div id="cg_943728_tooltip" style="position:absolute;pointer-events:none;background:rgba(20,20,40,0.92);color:#e8e8f0;padding:8px 14px;border-radius:8px;font-size:13px;line-height:1.5;border:1px solid rgba(255,255,255,0.12);opacity:0;transition:opacity 0.15s;white-space:nowrap;z-index:10;"></div>
+</div>
+<script>
+(function() {
+const CFG = {"n": 5, "visibleEdges": [{"src": 0, "dst": 1, "weight": 0.5}, {"src": 1, "dst": 2, "weight": 1.0}, {"src": 1, "dst": 3, "weight": 0.5}, {"src": 1, "dst": 4, "weight": 0.5}, {"src": 2, "dst": 3, "weight": 0.5}, {"src": 3, "dst": 4, "weight": 0.5}], "maxWeight": 1.0, "colors": ["#4285F4", "#EA4335", "#34A853", "#FF9800", "#795548"], "labels": ["Problem Setup", "Plan Generation", "Active Computation", "Self Checking", "Final Answer Emission"], "texts": ["Let me start by understanding the problem...", "I notice that this is equivalent to...", "Computing the value: 3 * 7 = 21", "Let me verify: 21 / 7 = 3, correct", "Therefore the answer is 21"], "strengths": [0.5, 2.5, 1.5, 1.5, 1.0], "importances": [0.07142857142857142, 0.35714285714285715, 0.21428571428571427, 0.21428571428571427, 0.14285714285714285], "nodeTopEdges": {"0": [{"src": 0, "dst": 1, "weight": 0.5}], "1": [{"src": 1, "dst": 2, "weight": 1.0}, {"src": 1, "dst": 3, "weight": 0.5}, {"src": 1, "dst": 4, "weight": 0.5}, {"src": 0, "dst": 1, "weight": 0.5}], "2": [{"src": 2, "dst": 3, "weight": 0.5}, {"src": 1, "dst": 2, "weight": 1.0}], "3": [{"src": 3, "dst": 4, "weight": 0.5}, {"src": 1, "dst": 3, "weight": 0.5}, {"src": 2, "dst": 3, "weight": 0.5}], "4": [{"src": 1, "dst": 4, "weight": 0.5}, {"src": 3, "dst": 4, "weight": 0.5}]}, "nTopEdges": 3, "width": 800, "height": 700, "minR": 8.0, "maxR": 28.0, "title": ""};
+const canvas = document.getElementById('cg_943728_canvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('cg_943728_tooltip');
+const dpr = window.devicePixelRatio || 1;
+
+canvas.width = CFG.width * dpr;
+canvas.height = CFG.height * dpr;
+canvas.style.width = CFG.width + 'px';
+canvas.style.height = CFG.height + 'px';
+ctx.scale(dpr, dpr);
+
+const W = CFG.width, H = CFG.height;
+const cx = W / 2, cy = H / 2;
+const R = Math.min(W, H) * 0.42;
+
+const nodes = [];
+// Use logarithmic scaling for node size, with median as floor (below-median nodes get min size)
+const sortedStrengths = [...CFG.strengths].sort((a, b) => a - b);
+const medianStrength = sortedStrengths[Math.floor(sortedStrengths.length / 2)];
+const logOffset = 0.001;
+const medianLog = Math.log(medianStrength + logOffset);
+const maxLog = Math.log(Math.max(...CFG.strengths) + logOffset);
+for (let i = 0; i < CFG.n; i++) {
+  const angle = (2 * Math.PI * i) / CFG.n - Math.PI / 2;
+  const logVal = Math.log(CFG.strengths[i] + logOffset);
+  // Clamp to median: anything below median gets t=0 (min size)
+  const t = maxLog > medianLog ? Math.max(0, (logVal - medianLog) / (maxLog - medianLog)) : 0.5;
+  const r = CFG.minR + t * (CFG.maxR - CFG.minR);
+  nodes.push({ x: cx + R * Math.cos(angle), y: cy + R * Math.sin(angle), r: r });
+}
+
+let hovered = -1;
+let anchored = -1;
+
+function drawArrowhead(fromX, fromY, toX, toY, size, color, alpha) {
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - size * Math.cos(angle - 0.35), toY - size * Math.sin(angle - 0.35));
+  ctx.lineTo(toX - size * Math.cos(angle + 0.35), toY - size * Math.sin(angle + 0.35));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function edgeEndpoints(src, dst) {
+  const s = nodes[src], d = nodes[dst];
+  const dx = d.x - s.x, dy = d.y - s.y;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  const ux = dx/dist, uy = dy/dist;
+  return { x1: s.x + ux * (s.r + 2), y1: s.y + uy * (s.r + 2), x2: d.x - ux * (d.r + 5), y2: d.y - uy * (d.r + 5) };
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  const activeNode = anchored >= 0 ? anchored : hovered;
+  const activeEdges = activeNode >= 0 ? (CFG.nodeTopEdges[activeNode] || []) : [];
+  const activeEdgeSet = new Set(activeEdges.map(e => e.src + ',' + e.dst));
+
+  // Draw all visible edges (thin, solid, opacity proportional to weight)
+  for (const e of CFG.visibleEdges) {
+    const {x1,y1,x2,y2} = edgeEndpoints(e.src, e.dst);
+    const norm = Math.abs(e.weight) / (CFG.maxWeight || 1);
+    const alpha = 0.1 + 0.4 * norm;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = `rgba(180,180,200,${alpha.toFixed(2)})`;
+    ctx.lineWidth = 0.8 + 1.0 * norm;
+    ctx.stroke();
+  }
+
+  // Draw highlighted edges for active node (thick, dashed, with arrows)
+  // White for positive weights, red for negative weights
+  const edgeLabels = []; // Store labels to draw after nodes
+  if (activeNode >= 0) {
+    const maxW = activeEdges.length > 0 ? Math.max(...activeEdges.map(e => Math.abs(e.weight))) : 1;
+    for (const e of activeEdges) {
+      const {x1,y1,x2,y2} = edgeEndpoints(e.src, e.dst);
+      const absW = Math.abs(e.weight);
+      const norm = absW / (maxW || 1);
+      const alpha = 0.4 + 0.5 * norm;
+      const lw = 1.5 + 2.0 * norm;
+      const isPositive = e.weight >= 0;
+      const edgeColor = isPositive ? `rgba(220,220,240,${alpha.toFixed(2)})` : `rgba(255,80,80,${alpha.toFixed(2)})`;
+
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = edgeColor;
+      ctx.lineWidth = lw;
+      ctx.stroke();
+      ctx.restore();
+
+      drawArrowhead(x1, y1, x2, y2, 8 + 4 * norm, edgeColor, alpha);
+
+      // Determine which node to label (the one that's not the active node)
+      const labelNode = (e.src === activeNode) ? e.dst : e.src;
+      const nd = nodes[labelNode];
+      // Position label outside the node, away from center
+      const cx = W / 2, cy = H / 2;
+      const dx = nd.x - cx, dy = nd.y - cy;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const labelOffset = nd.r + 22;
+      const lx = nd.x + (dx / dist) * labelOffset;
+      const ly = nd.y + (dy / dist) * labelOffset;
+      const val = e.weight.toFixed(2);
+      const labelText = isPositive ? `+${val}` : `${val}`;
+      const labelColor = isPositive ? '#fff' : '#ff5050';
+      edgeLabels.push({ x: lx, y: ly, text: labelText, color: labelColor });
+    }
+  }
+
+  // Draw nodes (sorted by radius descending so smaller nodes appear on top)
+  const nodeOrder = [...Array(CFG.n).keys()].sort((a, b) => nodes[b].r - nodes[a].r);
+  for (const i of nodeOrder) {
+    const nd = nodes[i];
+    const isActive = (i === activeNode);
+    const isConnected = activeNode >= 0 && activeEdges.some(e => e.src === i || e.dst === i);
+    const dimmed = activeNode >= 0 && !isActive && !isConnected;
+
+    ctx.beginPath();
+    ctx.arc(nd.x, nd.y, nd.r, 0, Math.PI * 2);
+
+    if (isActive) {
+      ctx.shadowColor = CFG.colors[i];
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = CFG.colors[i];
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#111';
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = dimmed ? 0.3 : 1.0;
+      ctx.fillStyle = CFG.colors[i];
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    }
+
+    const fontSize = Math.max(9, Math.min(13, nd.r * 0.85));
+    ctx.font = `bold ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = dimmed ? 0.25 : 1.0;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(String(i), nd.x, nd.y + 0.5);
+    ctx.globalAlpha = 1.0;
+  }
+
+  // Draw edge labels outside connected nodes
+  ctx.font = `bold 11px 'Segoe UI', system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const lbl of edgeLabels) {
+    ctx.fillStyle = '#000';
+    ctx.fillText(lbl.text, lbl.x + 1, lbl.y + 1);
+    ctx.fillStyle = lbl.color;
+    ctx.fillText(lbl.text, lbl.x, lbl.y);
+  }
+}
+
+function findNode(mx, my) {
+  for (let i = 0; i < CFG.n; i++) {
+    const dx = mx - nodes[i].x, dy = my - nodes[i].y;
+    if (dx*dx + dy*dy <= (nodes[i].r + 4) * (nodes[i].r + 4)) return i;
+  }
+  return -1;
+}
+
+function showTooltip(idx, evt) {
+  const rect = canvas.getBoundingClientRect();
+  tooltip.style.opacity = '1';
+  const imp = (CFG.importances[idx] * 100).toFixed(1);
+  const lbl = CFG.labels[idx];
+  const txt = CFG.texts[idx];
+  tooltip.innerHTML = `<strong>Chunk ${idx}</strong><br>Category: ${lbl}<br>Importance: ${imp}%<br>Text: ${txt}`;
+  const tx = evt.clientX - rect.left + 220;
+  const ty = evt.clientY - rect.top + 10;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top = ty + 'px';
+}
+
+canvas.addEventListener('mousemove', (evt) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = evt.clientX - rect.left;
+  const my = evt.clientY - rect.top;
+  const found = findNode(mx, my);
+
+  if (found !== hovered) {
+    hovered = found;
+    draw();
+  }
+
+  if (found >= 0) {
+    showTooltip(found, evt);
+  } else {
+    tooltip.style.opacity = '0';
+  }
+});
+
+canvas.addEventListener('click', (evt) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = evt.clientX - rect.left;
+  const my = evt.clientY - rect.top;
+  const found = findNode(mx, my);
+
+  if (found >= 0) {
+    anchored = (anchored === found) ? -1 : found;
+  } else {
+    anchored = -1;
+  }
+  draw();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hovered = -1;
+  tooltip.style.opacity = '0';
+  draw();
+});
+
+draw();
+})();
+</script>
