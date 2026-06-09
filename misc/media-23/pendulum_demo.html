@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pendulum — play the environment</title>
+<style>
+  :root { --bg:#0f1116; --panel:#1a1d27; --ink:#e8eaf0; --muted:#9aa3b2; --accent:#4aa3ff; --good:#2ec28b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; font-size:14px; }
+  .stage { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  canvas { background:#11141c; border:1px solid #262a36; border-radius:12px; touch-action:none; }
+  .panel { background:var(--panel); border:1px solid #262a36; border-radius:12px; padding:16px; flex:1; min-width:300px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 12px; }
+  .obs-row { display:grid; grid-template-columns:120px 1fr 64px; align-items:center; gap:10px; margin:10px 0; }
+  .obs-row label { font-size:13px; color:var(--ink); }
+  .obs-row input[type=range] { width:100%; accent-color:var(--accent); }
+  .obs-row .val { font-variant-numeric:tabular-nums; font-size:13px; color:var(--muted); text-align:right; }
+  input[type=range] { pointer-events:none; }   /* read-only displays */
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  button { background:#222634; color:var(--ink); border:1px solid #333a4d; border-radius:8px;
+           padding:9px 14px; font-size:14px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button:active { background:#2c3346; }
+  .torque-wrap { margin-top:18px; }
+  .torque-bar { position:relative; height:26px; background:#11141c; border:1px solid #262a36;
+                border-radius:13px; margin-top:6px; }
+  .torque-bar .zero { position:absolute; left:50%; top:0; bottom:0; width:1px; background:#3a4152; }
+  .torque-bar .dot { position:absolute; top:50%; width:18px; height:18px; margin-left:-9px;
+                     margin-top:-9px; border-radius:50%; background:var(--good); transition:left .03s linear; }
+  .hint { color:var(--muted); font-size:12.5px; line-height:1.5; margin-top:14px; }
+  kbd { background:#222634; border:1px solid #333a4d; border-bottom-width:2px; border-radius:5px;
+        padding:1px 6px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pendulum &mdash; play the environment</h1>
+  <p class="sub">Apply a torque to swing the pole up and balance it pointing straight up. This is the exact
+     environment your PPO agent trains on &mdash; see if you can beat it.</p>
+
+  <div class="stage">
+    <canvas id="cv" width="300" height="300"></canvas>
+
+    <div class="panel">
+      <h2>Observation (what the agent sees)</h2>
+      <div class="obs-row">
+        <label>x = cos&theta;</label>
+        <input type="range" id="ox" min="-1" max="1" step="0.001" value="-1" disabled>
+        <span class="val" id="vx">-1.00</span>
+      </div>
+      <div class="obs-row">
+        <label>y = sin&theta;</label>
+        <input type="range" id="oy" min="-1" max="1" step="0.001" value="0" disabled>
+        <span class="val" id="vy">0.00</span>
+      </div>
+      <div class="obs-row">
+        <label>angular velocity</label>
+        <input type="range" id="ow" min="-8" max="8" step="0.01" value="0" disabled>
+        <span class="val" id="vw">0.00</span>
+      </div>
+
+      <div class="torque-wrap">
+        <h2 style="margin-bottom:2px;">Applied torque &nbsp;<span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;">(your action, range [-2, 2])</span></h2>
+        <div class="torque-bar"><div class="zero"></div><div class="dot" id="tqdot"></div></div>
+      </div>
+
+      <div class="controls" style="margin-top:18px;">
+        <button id="leftBtn">&#8635; torque &minus;2</button>
+        <button id="rightBtn">torque +2 &#8634;</button>
+        <button id="resetBtn">reset</button>
+      </div>
+      <div class="controls">
+        <button id="slowBtn">&#9201; slower</button>
+        <button id="fastBtn">&#9201; faster</button>
+        <span class="val" style="align-self:center;" id="fpsLabel">20 steps/s</span>
+      </div>
+
+      <div class="hint">
+        Hold <kbd>&larr;</kbd>/<kbd>A</kbd> or <kbd>&rarr;</kbd>/<kbd>D</kbd> (or the buttons) to apply a
+        torque of &plusmn;2; let go for zero torque. The pole starts hanging near the bottom.
+        &theta; = 0 is straight up. Note there's no score shown &mdash; designing a reward that captures
+        "upright and still" is your job in the exercise.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Pendulum-v1 dynamics (gymnasium classic_control/pendulum.py), ported to JS -----------------
+const G = 10.0, M = 1.0, L = 1.0, DT = 0.05, MAX_SPEED = 8.0, MAX_TORQUE = 2.0;
+
+let th = Math.PI;     // angle from straight up (0 = up, +/-pi = hanging down)
+let thdot = 0.0;      // angular velocity
+let torque = 0.0;     // current applied action, in [-MAX_TORQUE, MAX_TORQUE]
+let fps = 20;         // physics steps per second (sim speed); adjustable
+let timer = null;
+
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+
+function reset() {
+  // gymnasium default: theta ~ U[-pi, pi], thetadot ~ U[-1, 1]
+  th = rand(-Math.PI, Math.PI);
+  thdot = rand(-1, 1);
+  torque = 0;
+}
+
+function step(u) {
+  u = Math.max(-MAX_TORQUE, Math.min(MAX_TORQUE, u));
+  let newthdot = thdot + (3 * G / (2 * L) * Math.sin(th) + 3.0 / (M * L * L) * u) * DT;
+  newthdot = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, newthdot));  // clamp, then integrate angle
+  th = th + newthdot * DT;
+  thdot = newthdot;
+}
+
+// --- rendering ----------------------------------------------------------------------------------
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+function draw() {
+  const W = cv.width, H = cv.height, cx = W / 2, cy = H / 2, R = 110;
+  ctx.clearRect(0, 0, W, H);
+  // faint axes / up marker
+  ctx.strokeStyle = "#262a36"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, cy - R - 16); ctx.lineTo(cx, cy - R + 4); ctx.stroke();
+  ctx.fillStyle = "#3a4152"; ctx.font = "11px sans-serif"; ctx.fillText("up (θ=0)", cx + 6, cy - R - 6);
+  // tip at (sin th, cos th); y is up, so screen y subtracts cos
+  const tipx = cx + Math.sin(th) * R, tipy = cy - Math.cos(th) * R;
+  ctx.strokeStyle = "#4aa3ff"; ctx.lineWidth = 7; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tipx, tipy); ctx.stroke();
+  ctx.fillStyle = "#9aa3b2"; ctx.beginPath(); ctx.arc(cx, cy, 8, 0, 7); ctx.fill();      // pivot
+  ctx.fillStyle = "#ff5d5d"; ctx.beginPath(); ctx.arc(tipx, tipy, 14, 0, 7); ctx.fill(); // bob
+}
+
+function updateObs() {
+  const cosT = Math.cos(th), sinT = Math.sin(th);
+  document.getElementById("ox").value = cosT; document.getElementById("vx").textContent = cosT.toFixed(2);
+  document.getElementById("oy").value = sinT; document.getElementById("vy").textContent = sinT.toFixed(2);
+  document.getElementById("ow").value = thdot; document.getElementById("vw").textContent = thdot.toFixed(2);
+  const frac = (Math.max(-MAX_TORQUE, Math.min(MAX_TORQUE, torque)) + MAX_TORQUE) / (2 * MAX_TORQUE);
+  document.getElementById("tqdot").style.left = (frac * 100) + "%";
+}
+
+function tick() { step(torque); draw(); updateObs(); }
+
+function restartTimer() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(tick, 1000 / fps);
+  document.getElementById("fpsLabel").textContent = fps + " steps/s";
+}
+
+// --- controls -----------------------------------------------------------------------------------
+function setFps(f) { fps = Math.max(2, Math.min(120, f)); restartTimer(); }
+document.getElementById("slowBtn").onclick = () => setFps(Math.round(fps / 1.5));
+document.getElementById("fastBtn").onclick = () => setFps(Math.round(fps * 1.5));
+document.getElementById("resetBtn").onclick = () => { reset(); draw(); updateObs(); };
+
+function hold(btn, val) {
+  const on = e => { e.preventDefault(); torque = val; };
+  const off = () => { torque = 0; };
+  btn.addEventListener("mousedown", on);  btn.addEventListener("touchstart", on, {passive:false});
+  btn.addEventListener("mouseup", off);   btn.addEventListener("mouseleave", off);
+  btn.addEventListener("touchend", off);
+}
+hold(document.getElementById("leftBtn"), -MAX_TORQUE);
+hold(document.getElementById("rightBtn"), MAX_TORQUE);
+
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") torque = -MAX_TORQUE;
+  else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") torque = MAX_TORQUE;
+});
+window.addEventListener("keyup", e => {
+  if (["ArrowLeft","ArrowRight","a","A","d","D"].includes(e.key)) torque = 0;
+});
+
+reset(); draw(); updateObs(); restartTimer();
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MountainCar — play the environment</title>
+<style>
+  :root { --bg:#0f1116; --panel:#1a1d27; --ink:#e8eaf0; --muted:#9aa3b2; --accent:#4aa3ff; --good:#2ec28b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:820px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; font-size:14px; }
+  .stage { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+  canvas { background:#11141c; border:1px solid #262a36; border-radius:12px; touch-action:none; }
+  .panel { background:var(--panel); border:1px solid #262a36; border-radius:12px; padding:16px; flex:1; min-width:300px; }
+  .panel h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 12px; }
+  .obs-row { display:grid; grid-template-columns:120px 1fr 72px; align-items:center; gap:10px; margin:10px 0; }
+  .obs-row label { font-size:13px; color:var(--ink); }
+  .obs-row input[type=range] { width:100%; accent-color:var(--accent); pointer-events:none; }
+  .obs-row .val { font-variant-numeric:tabular-nums; font-size:13px; color:var(--muted); text-align:right; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  button { background:#222634; color:var(--ink); border:1px solid #333a4d; border-radius:8px;
+           padding:9px 14px; font-size:14px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button:active { background:#2c3346; }
+  .action-row { margin-top:18px; display:flex; gap:8px; }
+  .act { flex:1; text-align:center; padding:8px 0; border-radius:8px; border:1px solid #333a4d;
+         background:#11141c; color:var(--muted); font-size:13px; }
+  .act.on { background:#1d3a2e; border-color:var(--good); color:var(--good); }
+  .banner { margin-top:14px; padding:10px 12px; border-radius:8px; background:#1d3a2e; border:1px solid var(--good);
+            color:var(--good); font-size:14px; display:none; }
+  .hint { color:var(--muted); font-size:12.5px; line-height:1.5; margin-top:14px; }
+  kbd { background:#222634; border:1px solid #333a4d; border-bottom-width:2px; border-radius:5px;
+        padding:1px 6px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MountainCar &mdash; play the environment</h1>
+  <p class="sub">The engine is too weak to drive straight up the right hill &mdash; rock back and forth to
+     build momentum, then reach the flag. This is the exact environment your PPO agent trains on.</p>
+
+  <div class="stage">
+    <canvas id="cv" width="420" height="300"></canvas>
+
+    <div class="panel">
+      <h2>Observation (what the agent sees)</h2>
+      <div class="obs-row">
+        <label>position</label>
+        <input type="range" id="op" min="-1.2" max="0.6" step="0.001" value="-0.5" disabled>
+        <span class="val" id="vp">-0.50</span>
+      </div>
+      <div class="obs-row">
+        <label>velocity</label>
+        <input type="range" id="ov" min="-0.07" max="0.07" step="0.0001" value="0" disabled>
+        <span class="val" id="vv">0.000</span>
+      </div>
+
+      <h2 style="margin-top:18px;">Action (you)</h2>
+      <div class="action-row">
+        <div class="act" id="actL">&#9664; push left</div>
+        <div class="act on" id="actN">coast</div>
+        <div class="act" id="actR">push right &#9654;</div>
+      </div>
+
+      <div id="banner" class="banner">🏁 Reached the flag! Press reset to play again.</div>
+
+      <div class="controls" style="margin-top:18px;">
+        <button id="leftBtn">&#9664; left</button>
+        <button id="rightBtn">right &#9654;</button>
+        <button id="resetBtn">reset</button>
+      </div>
+      <div class="controls">
+        <button id="slowBtn">&#9201; slower</button>
+        <button id="fastBtn">&#9201; faster</button>
+        <span class="val" style="align-self:center;" id="fpsLabel">30 steps/s</span>
+      </div>
+
+      <div class="hint">
+        Hold <kbd>&larr;</kbd>/<kbd>A</kbd> to push left, <kbd>&rarr;</kbd>/<kbd>D</kbd> to push right
+        (or the buttons); release to coast. The three discrete actions are push-left / coast / push-right.
+        The car starts at the bottom of the valley with zero velocity.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- MountainCar-v0 dynamics (gym classic_control/mountain_car.py), ported to JS -----------------
+const MIN_POS = -1.2, MAX_POS = 0.6, MAX_SPEED = 0.07, GOAL_POS = 0.5;
+const FORCE = 0.001, GRAVITY = 0.0025;
+
+let pos = -0.5, vel = 0.0;
+let action = 1;       // 0 = push left, 1 = coast, 2 = push right
+let done = false;
+let fps = 30;         // physics steps per second (sim speed); adjustable
+let timer = null;
+
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+
+function reset() {
+  pos = rand(-0.6, -0.4);   // gym: position ~ U[-0.6, -0.4]
+  vel = 0.0;                // velocity always starts at 0
+  done = false;
+  document.getElementById("banner").style.display = "none";
+}
+
+function step(a) {
+  if (done) return;
+  vel += (a - 1) * FORCE - GRAVITY * Math.cos(3 * pos);   // a-1 in {-1,0,1}
+  vel = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, vel));
+  pos += vel;
+  pos = Math.max(MIN_POS, Math.min(MAX_POS, pos));
+  if (pos <= MIN_POS && vel < 0) vel = 0;                 // inelastic left-wall collision
+  if (pos >= GOAL_POS && vel >= 0) {                      // reached the flag
+    done = true;
+    document.getElementById("banner").style.display = "block";
+  }
+}
+
+// --- rendering ----------------------------------------------------------------------------------
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const height = x => Math.sin(3 * x) * 0.45 + 0.55;        // hill height function (gym _height)
+function sx(x) { return (x - MIN_POS) / (MAX_POS - MIN_POS) * cv.width; }
+function sy(x) { return cv.height - height(x) * cv.height * 0.7 - cv.height * 0.12; }
+
+function draw() {
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  // hill
+  ctx.strokeStyle = "#8a93a6"; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i <= 120; i++) {
+    const x = MIN_POS + (MAX_POS - MIN_POS) * i / 120;
+    i === 0 ? ctx.moveTo(sx(x), sy(x)) : ctx.lineTo(sx(x), sy(x));
+  }
+  ctx.stroke();
+  // goal flag at x = 0.5
+  const gx = sx(GOAL_POS), gy = sy(GOAL_POS);
+  ctx.strokeStyle = "#e8eaf0"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx, gy - 48); ctx.stroke();
+  ctx.fillStyle = "#2ec28b"; ctx.beginPath();
+  ctx.moveTo(gx, gy - 48); ctx.lineTo(gx, gy - 32); ctx.lineTo(gx + 26, gy - 40); ctx.closePath(); ctx.fill();
+  // car (a circle riding the curve)
+  ctx.fillStyle = "#ff5d5d"; ctx.beginPath(); ctx.arc(sx(pos), sy(pos) - 6, 9, 0, 7); ctx.fill();
+}
+
+function updateObs() {
+  document.getElementById("op").value = pos; document.getElementById("vp").textContent = pos.toFixed(2);
+  document.getElementById("ov").value = vel; document.getElementById("vv").textContent = vel.toFixed(3);
+  for (const [id, on] of [["actL", action === 0], ["actN", action === 1], ["actR", action === 2]])
+    document.getElementById(id).classList.toggle("on", on);
+}
+
+function tick() { step(action); draw(); updateObs(); }
+
+function restartTimer() {
+  if (timer) clearInterval(timer);
+  timer = setInterval(tick, 1000 / fps);
+  document.getElementById("fpsLabel").textContent = fps + " steps/s";
+}
+
+// --- controls -----------------------------------------------------------------------------------
+function setFps(f) { fps = Math.max(2, Math.min(120, f)); restartTimer(); }
+document.getElementById("slowBtn").onclick = () => setFps(Math.round(fps / 1.5));
+document.getElementById("fastBtn").onclick = () => setFps(Math.round(fps * 1.5));
+document.getElementById("resetBtn").onclick = () => { reset(); draw(); updateObs(); };
+
+function hold(btn, val) {
+  const on = e => { e.preventDefault(); action = val; };
+  const off = () => { action = 1; };
+  btn.addEventListener("mousedown", on);  btn.addEventListener("touchstart", on, {passive:false});
+  btn.addEventListener("mouseup", off);   btn.addEventListener("mouseleave", off);
+  btn.addEventListener("touchend", off);
+}
+hold(document.getElementById("leftBtn"), 0);
+hold(document.getElementById("rightBtn"), 2);
+
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") action = 0;
+  else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") action = 2;
+});
+window.addEventListener("keyup", e => {
+  if (["ArrowLeft","ArrowRight","a","A","d","D"].includes(e.key)) action = 1;
+});
+
+reset(); draw(); updateObs(); restartTimer();
+</script>
+</body>
+</html>
