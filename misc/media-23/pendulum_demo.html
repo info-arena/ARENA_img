@@ -78,6 +78,9 @@
         <button id="slowBtn">&#9201; slower</button>
         <button id="fastBtn">&#9201; faster</button>
         <span class="val" style="align-self:center;" id="fpsLabel">20 steps/s</span>
+        <label class="val" style="align-self:center; display:flex; gap:6px; align-items:center; cursor:pointer;">
+          <input type="checkbox" id="reverse"> reverse controls
+        </label>
       </div>
 
       <div class="hint">
@@ -157,19 +160,23 @@ document.getElementById("slowBtn").onclick = () => setFps(Math.round(fps / 1.5))
 document.getElementById("fastBtn").onclick = () => setFps(Math.round(fps * 1.5));
 document.getElementById("resetBtn").onclick = () => { reset(); draw(); updateObs(); };
 
-function hold(btn, val) {
-  const on = e => { e.preventDefault(); torque = val; };
+let reverse = false;
+document.getElementById("reverse").onchange = e => { reverse = e.target.checked; };
+function setTorque(dir) { torque = dir * MAX_TORQUE * (reverse ? -1 : 1); }  // dir is -1 (left) / +1 (right)
+
+function hold(btn, dir) {
+  const on = e => { e.preventDefault(); setTorque(dir); };
   const off = () => { torque = 0; };
   btn.addEventListener("mousedown", on);  btn.addEventListener("touchstart", on, {passive:false});
   btn.addEventListener("mouseup", off);   btn.addEventListener("mouseleave", off);
   btn.addEventListener("touchend", off);
 }
-hold(document.getElementById("leftBtn"), -MAX_TORQUE);
-hold(document.getElementById("rightBtn"), MAX_TORQUE);
+hold(document.getElementById("leftBtn"), -1);
+hold(document.getElementById("rightBtn"), 1);
 
 window.addEventListener("keydown", e => {
-  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") torque = -MAX_TORQUE;
-  else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") torque = MAX_TORQUE;
+  if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") setTorque(-1);
+  else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") setTorque(1);
 });
 window.addEventListener("keyup", e => {
   if (["ArrowLeft","ArrowRight","a","A","d","D"].includes(e.key)) torque = 0;
