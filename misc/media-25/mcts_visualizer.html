@@ -29,6 +29,14 @@
   .cell{aspect-ratio:1;border-radius:50%;background:#1a2138;display:flex;align-items:center;justify-content:center}
   .cell.r{background:radial-gradient(circle at 35% 30%,#ff7a64,var(--red))}
   .cell.y{background:radial-gradient(circle at 35% 30%,#ffe46b,var(--yellow))}
+  /* tree-path ghosts: translucent fill + dashed outline + ply number */
+  .cell.gr{background:rgba(232,80,58,.45);outline:2px dashed #ffffff88;outline-offset:-2px}
+  .cell.gy{background:rgba(232,192,32,.45);outline:2px dashed #ffffff88;outline-offset:-2px}
+  .cell.gr,.cell.gy{color:#fff;font-size:11px;font-weight:600}
+  /* rollout pieces: hollow rings */
+  .cell.or{border:3px solid rgba(232,80,58,.8);background:#1a2138}
+  .cell.oy{border:3px solid rgba(232,192,32,.8);background:#1a2138}
+  .stale{color:var(--bad);font-size:12px;margin-top:6px;display:none}
   .colbtns{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
   .colbtns button{padding:3px 0;font-size:12px}
   .turn{display:inline-block;width:14px;height:14px;border-radius:50%;vertical-align:-2px}
@@ -76,6 +84,12 @@
       <div class="row" style="margin-top:8px">
         <span class="muted">to move:</span> <span id="turnDot" class="turn"></span> <span id="turnTxt"></span>
         <button id="undo">undo</button><button id="clear">clear</button><button id="demo">demo</button>
+      </div>
+      <div id="staleWarn" class="stale">⚠ board edited — search tree is stale; press ▶ run MCTS to regenerate</div>
+      <div class="legend" id="boardLegend" style="display:none">
+        <span><b style="color:var(--ink)">solid</b> = real position</span>
+        <span><b style="color:var(--ink)">numbered translucent</b> = tree path (ply order)</span>
+        <span><b style="color:var(--ink)">hollow ring</b> = rollout playout</span>
       </div>
     </div>
 
@@ -204,6 +218,17 @@ function rollout(board, player){
     p=other(p);
   }
 }
+// like rollout(), but also returns the final board so the playout can be shown on the game board
+function rolloutFinal(board, player){
+  let b=cloneBoard(board), p=player;
+  while(true){
+    const moves=legalCols(b); if(moves.length===0) return {value:0, board:b};
+    const a=moves[(Math.random()*moves.length)|0]; dropMove(b,a,p);
+    if(checkWin(b,p)) return {value:p===player?1:-1, board:b};
+    if(isFull(b)) return {value:0, board:b};
+    p=other(p);
+  }
+}
 // leaf value: terminal value, else the AVERAGE of `nroll` independent random rollouts (∈ [-1,1])
 function evalLeaf(node, nroll){
   if(node.terminal) return node.termValue;
@@ -254,9 +279,16 @@ function simulateRecorded(root, cpuct, nroll, record){
     record({phase:'select', pathEdges:traversed.slice(), fresh:[], focus:node.id,
             info:`select · follow col ${a} (PUCT)`});
   }
-  // EVALUATE the leaf (terminal value, else average of `nroll` rollouts)
-  const leafVal = evalLeaf(node, nroll);
-  record({phase:'simulate', pathEdges:traversed.slice(), fresh:[], focus:node.id,
+  // EVALUATE the leaf (terminal value, else average of `nroll` rollouts; keep the first
+  // rollout's final board so the animation can show one playout's end-state)
+  let leafVal, rolloutBoard=null;
+  if(node.terminal){ leafVal=node.termValue; }
+  else{
+    const first=rolloutFinal(node.board, node.player); rolloutBoard=first.board;
+    let s=first.value; for(let i=1;i<Math.max(1,nroll);i++) s+=rollout(node.board, node.player);
+    leafVal=s/Math.max(1,nroll);
+  }
+  record({phase:'simulate', pathEdges:traversed.slice(), fresh:[], focus:node.id, rolloutBoard,
           info: node.terminal ? `evaluate · terminal (${node.winner ? (node.winner===RED?'red wins':'yellow wins') : 'draw'})`
                               : `simulate · avg of ${nroll} rollout${nroll>1?'s':''} = ${leafVal>=0?'+':''}${leafVal.toFixed(2)}`});
   // BACK-UP (negamax): update one node at a time, walking back up to the root
@@ -287,27 +319,38 @@ function snapshot(root, info){
 
 // ---------- state ----------
 let setupBoard=newBoard(), setupTurn=RED, history=[];
-let SNAPS=[], step=0, playing=false, timer=null, selId=null;
+let SNAPS=[], step=0, playing=false, timer=null, selId=null, boardStale=false;
 
 // ---------- setup board UI ----------
 const setupEl=document.getElementById('setup'), colbtnsEl=document.getElementById('colbtns');
-function renderSetup(){
+function renderSetup(overlay){
   colbtnsEl.innerHTML=''; for(let c=0;c<COLS;c++){const b=document.createElement('button');b.textContent='▼';
     b.title='drop in column '+c; b.onclick=()=>placeSetup(c); colbtnsEl.appendChild(b);}
+  const ghosts={}, rolls={};
+  if(overlay){ overlay.ghosts.forEach(g=>ghosts[g.r+','+g.c]=g); overlay.rolloutCells.forEach(g=>rolls[g.r+','+g.c]=g); }
   setupEl.innerHTML='';
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
-    const d=document.createElement('div'); d.className='cell'+(setupBoard[r][c]===RED?' r':setupBoard[r][c]===YEL?' y':'');
+    const d=document.createElement('div'); const g=ghosts[r+','+c], o=rolls[r+','+c];
+    if(setupBoard[r][c]!==EMPTY) d.className='cell'+(setupBoard[r][c]===RED?' r':' y');
+    else if(g){ d.className='cell'+(g.player===RED?' gr':' gy'); d.textContent=g.ply; }
+    else if(o){ d.className='cell'+(o.player===RED?' or':' oy'); }
+    else d.className='cell';
     setupEl.appendChild(d);
   }
+  document.getElementById('boardLegend').style.display = overlay ? 'flex' : 'none';
   document.getElementById('turnDot').style.background=setupTurn===RED?'var(--red)':'var(--yellow)';
   document.getElementById('turnTxt').textContent=setupTurn===RED?'red':'yellow';
 }
+// any edit to the board after a search makes the tree stale: drop ghosts, show the warning
+function markStale(){
+  if(SNAPS.length && !boardStale){ boardStale=true; document.getElementById('staleWarn').style.display='block'; }
+}
 function placeSetup(c){ if(landingRow(setupBoard,c)<0) return; history.push([cloneBoard(setupBoard),setupTurn]);
-  dropMove(setupBoard,c,setupTurn); setupTurn=other(setupTurn); renderSetup(); }
-document.getElementById('undo').onclick=()=>{ if(history.length){const [b,t]=history.pop(); setupBoard=b; setupTurn=t; renderSetup();} };
-document.getElementById('clear').onclick=()=>{ setupBoard=newBoard(); setupTurn=RED; history=[]; renderSetup(); };
+  dropMove(setupBoard,c,setupTurn); setupTurn=other(setupTurn); markStale(); renderSetup(); }
+document.getElementById('undo').onclick=()=>{ if(history.length){const [b,t]=history.pop(); setupBoard=b; setupTurn=t; markStale(); renderSetup();} };
+document.getElementById('clear').onclick=()=>{ setupBoard=newBoard(); setupTurn=RED; history=[]; markStale(); renderSetup(); };
 document.getElementById('demo').onclick=()=>{ setupBoard=newBoard(); setupTurn=RED; history=[];
-  for(const c of [3,3,4,2,4,4,2,5]) {dropMove(setupBoard,c,setupTurn); setupTurn=other(setupTurn);} renderSetup(); };
+  for(const c of [3,3,4,2,4,4,2,5]) {dropMove(setupBoard,c,setupTurn); setupTurn=other(setupTurn);} markStale(); renderSetup(); };
 
 // ---------- run ----------
 document.getElementById('run').onclick=()=>{
@@ -323,7 +366,8 @@ document.getElementById('run').onclick=()=>{
     if(detail){
       simulateRecorded(root, cpuct, nroll, f =>
         SNAPS.push(snapshot(root,{sims:s, info:`sim ${s} · ${f.info}`, pathEdges:f.pathEdges,
-                                  fresh:f.fresh, focus:f.focus, phase:f.phase, backedEdge:f.backedEdge})));
+                                  fresh:f.fresh, focus:f.focus, phase:f.phase, backedEdge:f.backedEdge,
+                                  rolloutBoard:f.rolloutBoard})));
     } else {
       const res=simulate(root,cpuct,nroll);
       const pathEdges=res.path.map(([n,a])=>({from:n.id, to:(n.children[a]?n.children[a].id:null)})).filter(e=>e.to!==null);
@@ -332,14 +376,39 @@ document.getElementById('run').onclick=()=>{
   }
   document.getElementById('runinfo').textContent=`${sims} sims · ${SNAPS[SNAPS.length-1].nodes.length} nodes`;
   const sl=document.getElementById('slider'); sl.max=SNAPS.length-1; sl.value=SNAPS.length-1;
+  boardStale=false; document.getElementById('staleWarn').style.display='none';
   selId=null; setStep(SNAPS.length-1);
 };
 
 // ---------- playback ----------
 const $=id=>document.getElementById(id);
+// ghost pieces for the path root -> focused node, plus rollout end-state cells on simulate frames
+function overlayCells(sn){
+  const byId={}; sn.nodes.forEach(n=>byId[n.id]=n);
+  let cur = sn.focus!==undefined && byId[sn.focus] ? byId[sn.focus]
+          : (sn.fresh && sn.fresh.length ? byId[sn.fresh[0]] : null);
+  const chain=[]; for(let n=cur; n; n=byId[n.parentId]) chain.push(n);
+  chain.reverse();                                   // root ... focus
+  const ghosts=[];
+  for(let i=1;i<chain.length;i++){
+    const pb=chain[i-1].board, cb=chain[i].board;
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++)
+      if(pb[r][c]!==cb[r][c]) ghosts.push({r, c, player:cb[r][c], ply:i});
+  }
+  const rolloutCells=[];
+  if(sn.phase==='simulate' && sn.rolloutBoard && cur){
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++)
+      if(sn.rolloutBoard[r][c]!==cur.board[r][c]) rolloutCells.push({r, c, player:sn.rolloutBoard[r][c]});
+  }
+  return {ghosts, rolloutCells};
+}
+function syncBoard(){
+  if(SNAPS.length && !boardStale) renderSetup(overlayCells(SNAPS[step]));
+  else renderSetup();
+}
 function setStep(i){ step=Math.max(0,Math.min(SNAPS.length-1,i)); $('slider').value=step;
   const sn=SNAPS[step]; $('stepinfo').textContent=`${step}/${SNAPS.length-1} · ${sn.info||('sim '+sn.sims)}`;
-  $('treepill').textContent=`${sn.nodes.length} nodes`; render(); }
+  $('treepill').textContent=`${sn.nodes.length} nodes`; render(); syncBoard(); }
 $('slider').oninput=e=>{stopPlay(); setStep(+e.target.value);};
 $('first').onclick=()=>{stopPlay();setStep(0);}; $('last').onclick=()=>{stopPlay();setStep(SNAPS.length-1);};
 $('back').onclick=()=>{stopPlay();setStep(step-1);}; $('fwd').onclick=()=>{stopPlay();setStep(step+1);};
