@@ -81,27 +81,6 @@
             background: #611f69;
         }
 
-        .cancel-button {
-            display: inline-block;
-            background: transparent;
-            color: #667eea;
-            text-decoration: none;
-            padding: 10px 20px;
-            border: 2px solid #667eea;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            margin: 10px;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            border: none;
-            background: #f0f0f0;
-        }
-
-        .cancel-button:hover {
-            background: #e0e0e0;
-        }
-
         .error-section {
             margin-top: 30px;
             padding-top: 30px;
@@ -124,48 +103,7 @@
         .email:hover {
             text-decoration: underline;
         }
-
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
     </style>
-    <script>
-        // UPDATE THIS URL WITH THE CURRENT SLACK INVITE LINK
-        const SLACK_INVITE_URL = 'https://join.slack.com/t/arena-uk/shared_invite/zt-493dnvrf9-PTy4p1OU5Q6CX74fwfNCaQ';
-
-        let redirectTimeout;
-
-        // Attempt automatic redirect after 8 seconds
-        redirectTimeout = setTimeout(() => {
-            window.location.href = SLACK_INVITE_URL;
-        }, 8000);
-
-        function cancelRedirect() {
-            clearTimeout(redirectTimeout);
-            document.getElementById('redirecting').style.display = 'none';
-            document.getElementById('manual').style.display = 'block';
-        }
-
-        function joinNow() {
-            window.location.href = SLACK_INVITE_URL;
-        }
-    </script>
 </head>
 
 <body>
@@ -173,15 +111,10 @@
         <div class="slack-icon">💬</div>
         <h1>Join the ARENA Slack</h1>
 
-        <div id="redirecting">
-            <p>You're being redirected to join the ARENA community on Slack...</p>
-            <div class="spinner"></div>
-            <button onclick="cancelRedirect()" class="cancel-button">Cancel Redirect</button>
-        </div>
-
-        <div id="manual" style="display: none;">
+        <div>
             <p class="redirect-message">Click the button below to join:</p>
-            <a href="javascript:joinNow()" class="button">Join ARENA Slack</a>
+            <!-- UPDATE THIS URL WITH THE CURRENT SLACK INVITE LINK -->
+            <a href="https://join.slack.com/t/arena-uk/shared_invite/zt-493dnvrf9-PTy4p1OU5Q6CX74fwfNCaQ" class="button">Join ARENA Slack</a>
         </div>
 
         <div class="error-section">
